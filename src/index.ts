@@ -1,10 +1,14 @@
-import express, { Request, Response } from "express";
+import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { io as ioClient, Socket } from "socket.io-client";
-import { addTransactions, Block, blockChain, BlockChain, BlockJSON, initNode, nodeEvents } from "./node";
+import { blockChain, BlockChain, BlockJSON, initNode, nodeEvents } from "./node";
+import router from "./endpoints";
+import { ErrorType, MessageType } from "./types";
+import { randomUUID } from "crypto";
 
 const PORT = 3420;
+const NODE_ID = randomUUID();  // for identification
 const peerList = [
     "http://localhost:3727"
 ];
@@ -13,72 +17,62 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server);
 const clients: Socket[] = [];
+const nodeIds: {[clientId: string]: string} = {};
 
 // http stuff
 app.use(express.json());
-
-app.post("/transaction", (req: Request, res: Response) => {
-    if (!req.body) {
-        return res.status(400).json({
-            error: "Missing required fields"
-        });
-    }
-
-    const { sender, receiver, amount } = req.body;
-
-    if (!sender || !receiver || amount === null) {
-        return res.status(400).json({
-            error: "Missing required fields"
-        });
-    }
-
-    addTransactions([{
-        sender,
-        receiver,
-        amount
-    }]);
-
-    return res.status(200).json({ message: "Successful" });
-});
+app.use(router);
 
 // socket stuff
 io.on("connection", (socket) => {
     console.log("client connected");
 
-    socket.on("askForBlockChain", (callback) => {
-        callback(blockChain.blocks.map(block => block.getJSON()));
+    // handshake whatever
+    socket.emit(MessageType.handshake, NODE_ID);
+
+    socket.on(MessageType.askForBlockChain, (callback) => {
+        callback(blockChain.json());
     });
 
-    socket.on("newBlock", (data: BlockJSON) => {
+    socket.on(MessageType.newBlock, (data: BlockJSON) => {
         blockChain.addBlockFromJSON(data);
+
+        const valid = blockChain.validate();
         
-        if (!blockChain.validate()) {
-            blockChain.blocks.pop();
+        if (valid !== ErrorType.valid) {
+            if (valid === ErrorType.outOfSync) {
+                syncBlockChain();
+            }
+
+            return;
         }
+
+        clients.forEach(client => {
+            if (nodeIds[client.id!] === socket.handshake.query.id) {
+                return;
+            }
+
+            client.emit(MessageType.newBlock, data);
+        });
 
         console.log(blockChain.blocks);
     });
 });
 
-async function init() {
-    // for blockchain synchronization
-    let longestBlockChain = new BlockChain();
-
-    const requests = peerList.map(url => {
+async function syncBlockChain() {
+    const requests = clients.map(client => {
         return new Promise(res => {
-            const client = ioClient(url);
-            clients.push(client);
-
-            console.log(`server connected: ${url}`);
+            // timeout
+            setTimeout(() => res(null), 10 * 1000);
 
             // ask for blockchain
-            client.emit("askForBlockChain", (data: BlockJSON[]) => {
-                if (data.length > longestBlockChain.blocks.length) {
+            client.emit(MessageType.askForBlockChain, (data: BlockJSON[]) => {
+                if (data.length > blockChain.blocks.length) {
                     const tempBlockChain = new BlockChain();
                     tempBlockChain.fromJSON(data);
 
-                    if (tempBlockChain.validate()) {
-                        longestBlockChain = tempBlockChain;
+                    if (tempBlockChain.validate() === ErrorType.valid) {
+                        blockChain.blocks = tempBlockChain.blocks;
                     }
                 }
 
@@ -88,20 +82,38 @@ async function init() {
     });
 
     await Promise.all(requests);
+}
+
+async function init() {
+    peerList.forEach(url => {
+        const client = ioClient(url, {
+            query: {
+                id: NODE_ID
+            }
+        });
+        clients.push(client);
+
+        client.on(MessageType.handshake, id => {
+            nodeIds[client.id!] = id;
+        });
+
+        console.log(`server connected: ${url}`);
+    });
 
     // node initialization
-    initNode(longestBlockChain);
+    await syncBlockChain();
+    await initNode();
+
+    server.listen(PORT, () => {
+        console.log(`http and socket open on port ${PORT}`);
+    });
 }
 
 init();
 
-server.listen(PORT, () => {
-    console.log(`http and socket open on port ${PORT}`);
-});
-
 // listener
-nodeEvents.on("newBlock", (data: Block) => {
+nodeEvents.on("newBlock", (data: BlockJSON) => {
     clients.forEach(client => {
-        client.emit("newBlock", data.getJSON());
+        client.emit(MessageType.newBlock, data);
     });
-})
+});

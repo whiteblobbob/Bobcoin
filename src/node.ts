@@ -1,8 +1,11 @@
 import { createHash } from "crypto";
 import EventEmitter from "events";
+import { Worker } from "worker_threads";
+import { ErrorType } from "./types";
 
-const DIFFICULTY = 4;
+const DIFFICULTY = 5;
 const MAX_TRANSACTIONS = 5;
+const REWARD = 64;
 
 type Transaction = {
     sender: string,
@@ -15,7 +18,8 @@ export type BlockJSON = {
     previousHash: string,
     data: Transaction[],
     nonce: number,
-    hash: string
+    hash: string,
+    index: number
 }
 
 export class Block {
@@ -24,11 +28,13 @@ export class Block {
     data: Transaction[];
     nonce = 0;
     hash: string;
+    index: number;
 
-    constructor(previousHash: string, data: Transaction[]) {
+    constructor(previousHash: string, data: Transaction[], index: number) {
         this.previousHash = previousHash;
         this.data = data;
         this.hash = this.calculateHash();
+        this.index = index;
     }
 
     blockString(): string {
@@ -36,7 +42,7 @@ export class Block {
     }
 
     calculateHash(): string {
-        const blockString = `${this.timestamp} ${this.previousHash} ${this.blockString()} ${this.nonce}`;
+        const blockString = `${this.index} ${this.timestamp} ${this.previousHash} ${this.blockString()} ${this.nonce}`;
 
         const hash = createHash('sha256')
             .update(blockString)
@@ -58,13 +64,14 @@ export class Block {
         }
     }
 
-    getJSON(): BlockJSON {
+    json(): BlockJSON {
         return ({
             timestamp: this.timestamp,
             previousHash: this.previousHash,
             data: this.data,
             nonce: this.nonce,
-            hash: this.hash
+            hash: this.hash,
+            index: this.index
         });
     }
 }
@@ -77,8 +84,12 @@ export class BlockChain {
     //     this.blocks.push(new Block(this.blocks[chainLength - 1]!.hash, data));
     // }
 
+    json() {
+        return this.blocks.map(block => block.json());
+    }
+
     addBlockFromJSON(blockJSON: BlockJSON) {
-        const block = new Block(blockJSON.previousHash, blockJSON.data);
+        const block = new Block(blockJSON.previousHash, blockJSON.data, blockJSON.index);
         block.hash = blockJSON.hash;
         block.nonce = blockJSON.nonce;
         block.timestamp = blockJSON.timestamp;
@@ -88,7 +99,7 @@ export class BlockChain {
 
     fromJSON(blocks: BlockJSON[]) {
         blocks.forEach(blockJSON => {
-            const block = new Block(blockJSON.previousHash, blockJSON.data);
+            const block = new Block(blockJSON.previousHash, blockJSON.data, blockJSON.index);
             block.hash = blockJSON.hash;
             block.nonce = blockJSON.nonce;
             block.timestamp = blockJSON.timestamp;
@@ -99,49 +110,75 @@ export class BlockChain {
         return this;
     }
     
-    validate(): boolean {
+    validate() {
         for (let i = 1; i < this.blocks.length; i++) {
             // this makes sure that the block datas wasnt tampered with AT ALL
             if (this.blocks[i]!.hash !== this.blocks[i]!.calculateHash()) {
+                this.blocks.pop();
+
                 console.log(`invalid block on index ${i} (tampered data)`);
-                return false;
+
+                return ErrorType.tamperedData;
             }
 
             // checks if the chain is still intact
             if (this.blocks[i]!.previousHash !== this.blocks[i-1]!.hash) {
+                this.blocks.pop();
+
                 console.log(`invalid block on index ${i} (broken chain)`);
-                return false;
+
+                return ErrorType.outOfSync;
+            }
+
+            // also check if the chain is still intact
+            if (this.blocks[i]!.index !== this.blocks[i-1]!.index + 1) {
+                this.blocks.pop();
+                console.log(`invalid block on index ${i} (broken chain)`);
+
+                return ErrorType.outOfSync;
             }
 
             // check for diff
             if (!this.blocks[i]!.hash.startsWith('0'.repeat(DIFFICULTY))) {
+                this.blocks.pop();
                 console.log(`invalid block on index ${i} (invalid proof of work)`);
-                return false;
+                return ErrorType.invalidPoW;
             }
 
             // check transactions
             const transactions = this.blocks[i]!.data; 
             for (let j = 0; j < transactions.length; j++) {
-                if (transactions[j]!.sender === 'system' && j !== 0) {
-                    console.log(`invalid block on index ${i} (invalid reward)`);
-                    return false;
+                if (transactions[j]!.sender === 'system') {
+                    if (j !== 0) {
+                        this.blocks.pop();
+                        console.log(`invalid block on index ${i} (invalid reward)`);
+                        return ErrorType.invalidPoW;
+                    }
+
+                    if (transactions[j]!.amount !== REWARD) {
+                        this.blocks.pop();
+                        console.log(`invalid block on index ${i} (invalid reward amount)`);
+                        return ErrorType.invalidPoW;
+                    }
                 }
             }
         }
 
-        return true;
+        return ErrorType.valid;
     }
 }
 
 export const nodeEvents = new EventEmitter();
 
 export let blockChain = new BlockChain();
-let transactions: Transaction[] = [];
+let transactions: Transaction[] = [{
+    sender: "system",
+    receiver: "bob",
+    amount: REWARD
+}];
 
-export async function initNode(startingBlockChain: BlockChain) {
-    if (startingBlockChain.blocks.length > 0) {
-        blockChain = startingBlockChain;
-
+export async function initNode() {
+    if (blockChain.blocks.length > 0) {
         return;
     }
 
@@ -150,8 +187,9 @@ export async function initNode(startingBlockChain: BlockChain) {
         sender: 'system',
         receiver: 'system`',
         amount: 0
-    }]);
+    }], 0);
 
+    console.log("mining genesis block...");
     await genesisBlock.mine();
 
     blockChain.blocks.push(genesisBlock);
@@ -160,7 +198,7 @@ export async function initNode(startingBlockChain: BlockChain) {
 export async function addTransactions(txs: Transaction[]) {
     transactions.push(...txs);
 
-    if (transactions.length < MAX_TRANSACTIONS) {
+    if (transactions.length < MAX_TRANSACTIONS + 1) {
         return;
     }
 
@@ -168,15 +206,32 @@ export async function addTransactions(txs: Transaction[]) {
 
     // make a new block
     const block = new Block(
-        blocks[blocks.length - 1]!.hash,
-        transactions
+        blocks.at(-1)!.hash,
+        transactions,
+        blocks.at(-1)!.index + 1
     );
 
-    transactions = [];
+    transactions = [{
+        sender: "system",
+        receiver: "bob",
+        amount: REWARD
+    }];
 
-    await block.mine();
+    console.log("max transaction reached");
 
-    // add the new block & notify endpoint
-    blockChain.blocks.push(block);
-    nodeEvents.emit("newBlock", block);
+    // background mining, doesnt block the whole app
+    const worker = new Worker('./src/threads/mine.ts', {
+        workerData: block.json(),
+        execArgv: ['-r', 'ts-node/register']
+    });
+
+    console.log("mining...");
+
+    worker.on("message", (block: BlockJSON) => {
+        // add the new block & notify endpoint
+        blockChain.addBlockFromJSON(block);
+        nodeEvents.emit("newBlock", block);
+
+        console.log("finished mining");
+    });
 }
