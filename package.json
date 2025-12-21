@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "npx ts-node src/index.ts"
+    "dev": "npx ts-node src/index.ts",
+    "generate-keys": "npx ts-node scripts/generateKeys.ts",
+    "new-transaction": "npx ts-node scripts/newTransaction.ts",
+    "check-balance": "npx ts-node scripts/checkBalance.ts"
   },
   "author": "",
   "license": "ISC",

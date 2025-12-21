@@ -1,16 +1,18 @@
-import { createHash } from "crypto";
+import { createHash, createVerify } from "crypto";
 import EventEmitter from "events";
 import { Worker } from "worker_threads";
 import { ErrorType } from "./types";
+import { readFileSync } from "fs";
 
-const DIFFICULTY = 5;
-const MAX_TRANSACTIONS = 5;
-const REWARD = 64;
+const DIFFICULTY = 6;
+const MAX_TRANSACTIONS = 10;
+const REWARD = 5;
 
 type Transaction = {
-    sender: string,
+    sender: string | null,
     receiver: string,
-    amount: number
+    amount: number,
+    signature: string | null
 }
 
 export type BlockJSON = {
@@ -109,6 +111,22 @@ export class BlockChain {
 
         return this;
     }
+
+    checkBalance(address: string) {
+        let balance = 0;
+
+        this.blocks.forEach(block => block.data.forEach(tx => {
+            if (tx.sender === address) {
+                balance -= tx.amount;
+            }
+
+            if (tx.receiver === address) {
+                balance += tx.amount;
+            }
+        }));
+
+        return balance;
+    }
     
     validate() {
         for (let i = 1; i < this.blocks.length; i++) {
@@ -148,7 +166,7 @@ export class BlockChain {
             // check transactions
             const transactions = this.blocks[i]!.data; 
             for (let j = 0; j < transactions.length; j++) {
-                if (transactions[j]!.sender === 'system') {
+                if (transactions[j]!.sender === null) {
                     if (j !== 0) {
                         this.blocks.pop();
                         console.log(`invalid block on index ${i} (invalid reward)`);
@@ -168,13 +186,17 @@ export class BlockChain {
     }
 }
 
+const publicKey = readFileSync('./keys/publicKey.txt', 'utf-8'); // also your address
+
 export const nodeEvents = new EventEmitter();
 
 export let blockChain = new BlockChain();
+
 let transactions: Transaction[] = [{
-    sender: "system",
-    receiver: "bob",
-    amount: REWARD
+    sender: null,
+    receiver: publicKey,
+    amount: REWARD,
+    signature: null
 }];
 
 export async function initNode() {
@@ -184,9 +206,10 @@ export async function initNode() {
 
     // genesis block
     const genesisBlock = new Block("0", [{
-        sender: 'system',
-        receiver: 'system`',
-        amount: 0
+        sender: null,
+        receiver: publicKey,
+        amount: 10,
+        signature: null
     }], 0);
 
     console.log("mining genesis block...");
@@ -196,7 +219,43 @@ export async function initNode() {
 }
 
 export async function addTransactions(txs: Transaction[]) {
-    transactions.push(...txs);
+    const validTxs: Transaction[] = [];
+
+    // validate the transaction
+    txs.forEach(tx => {
+        if (!tx.signature || !tx.sender || tx.amount < 0) {
+            return;
+        }
+
+        const verify = createVerify('SHA256');
+        verify.update(`${tx.sender}|${tx.receiver}|${tx.amount}`);
+        const isVerified = verify.verify(tx.sender, tx.signature, 'hex');
+
+        if (!isVerified) {
+            return;
+        }
+
+        // checks if that person has enough balance
+        let balance = 0;
+
+        blockChain.blocks.forEach(block => block.data.forEach(oldTx => {
+            if (oldTx.sender === tx.sender) {
+                balance -= oldTx.amount;
+            }
+
+            if (oldTx.receiver === tx.sender) {
+                balance += oldTx.amount;
+            }
+        }));
+
+        if (balance < 0) {
+            return;
+        }
+
+        validTxs.push(tx);
+    });
+
+    transactions.push(...validTxs);
 
     if (transactions.length < MAX_TRANSACTIONS + 1) {
         return;
@@ -211,10 +270,12 @@ export async function addTransactions(txs: Transaction[]) {
         blocks.at(-1)!.index + 1
     );
 
+    // clears the transaction list
     transactions = [{
-        sender: "system",
-        receiver: "bob",
-        amount: REWARD
+        sender: null,
+        receiver: publicKey,
+        amount: REWARD,
+        signature: null
     }];
 
     console.log("max transaction reached");
