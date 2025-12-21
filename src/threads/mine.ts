@@ -1,9 +1,7 @@
 import { createHash } from "crypto";
 import { parentPort, workerData, isMainThread } from "worker_threads";
 import { exit } from "process";
-import { BlockJSON } from "../node";
-
-const DIFFICULTY = 5;
+import { BlockJSON, DIFFICULTY } from "../node";
 
 function calculateHash(blockJSON: BlockJSON) {
     const transactionString = () => {

@@ -4,7 +4,7 @@ import { Worker } from "worker_threads";
 import { ErrorType } from "./types";
 import { readFileSync } from "fs";
 
-const DIFFICULTY = 6;
+export const DIFFICULTY = 6;
 const MAX_TRANSACTIONS = 10;
 const REWARD = 5;
 

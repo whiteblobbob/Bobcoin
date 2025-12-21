@@ -9,7 +9,9 @@ import { randomUUID } from "crypto";
 
 const PORT = 3000;
 const NODE_ID = randomUUID();  // for identification
-const peerList: string[] = [];
+const peerList: string[] = [
+    "http://192.168.1.83:3000"
+];
 
 const app = express();
 const server = createServer(app);
