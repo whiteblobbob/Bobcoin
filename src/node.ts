@@ -208,7 +208,7 @@ export async function initNode() {
     const genesisBlock = new Block("0", [{
         sender: null,
         receiver: publicKey,
-        amount: 0,
+        amount: 10,
         signature: null
     }], 0);
 

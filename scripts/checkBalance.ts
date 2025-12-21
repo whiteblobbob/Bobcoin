@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 
-const publicKey = readFileSync('./keys/publicKey.pem', 'utf-8')
+const publicKey = readFileSync('./keys/publicKey.pem', 'utf-8');
 
 fetch('http://localhost:3000/balance', {
     method: 'POST',
