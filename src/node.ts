@@ -295,6 +295,12 @@ export async function addTransactions(txs: Transaction[]) {
         blockChain.addBlockFromJSON(block);
         nodeEvents.emit("newBlock", block);
 
+        const valid = blockChain.validate();
+
+        if (valid === ErrorType.outOfSync) {
+            nodeEvents.emit("sync");
+        }
+
         console.log("finished mining");
     });
 }

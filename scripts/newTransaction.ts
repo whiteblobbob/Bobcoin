@@ -1,7 +1,7 @@
 import { createSign } from "crypto";
 import { readFileSync } from "fs";
 
-const AMOUNT = 1;
+const AMOUNT = 0;
 
 const [publicKey, privateKey, receiver] = [
     readFileSync('./keys/publicKey.pem', 'utf-8'),

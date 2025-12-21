@@ -10,7 +10,7 @@ import { randomUUID } from "crypto";
 const PORT = 3000;
 const NODE_ID = randomUUID();  // for identification
 const peerList: string[] = [
-    "http://192.168.1.83:3000"
+    "https://f9175e792e66.ngrok-free.app"
 ];
 
 const app = express();
@@ -116,4 +116,8 @@ nodeEvents.on("newBlock", (data: BlockJSON) => {
     clients.forEach(client => {
         client.emit(MessageType.newBlock, data);
     });
+});
+
+nodeEvents.on("sync", () => {
+    syncBlockChain();
 });
