@@ -7,11 +7,9 @@ import router from "./endpoints";
 import { ErrorType, MessageType } from "./types";
 import { randomUUID } from "crypto";
 
-const PORT = 3420;
+const PORT = 3000;
 const NODE_ID = randomUUID();  // for identification
-const peerList = [
-    "http://localhost:3727"
-];
+const peerList: string[] = [];
 
 const app = express();
 const server = createServer(app);
