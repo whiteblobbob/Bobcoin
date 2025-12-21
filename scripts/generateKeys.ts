@@ -15,7 +15,7 @@ const { publicKey, privateKey } = generateKeyPairSync('rsa', {
   },
 });
 
-writeFileSync('./keys/publicKey.txt', publicKey);
-writeFileSync('./keys/privateKey.txt', privateKey);
+writeFileSync('./keys/publicKey.pem', publicKey);
+writeFileSync('./keys/privateKey.pem', privateKey);
 
 console.log('keys have been saved in "keys" folder');

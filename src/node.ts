@@ -4,8 +4,8 @@ import { Worker } from "worker_threads";
 import { ErrorType } from "./types";
 import { readFileSync } from "fs";
 
-export const DIFFICULTY = 6;
-const MAX_TRANSACTIONS = 10;
+export const DIFFICULTY = 5;
+const MAX_TRANSACTIONS = 3;
 const REWARD = 5;
 
 type Transaction = {
@@ -186,7 +186,7 @@ export class BlockChain {
     }
 }
 
-const publicKey = readFileSync('./keys/publicKey.txt', 'utf-8'); // also your address
+const publicKey = readFileSync('./keys/publicKey.pem', 'utf-8'); // also your address
 
 export const nodeEvents = new EventEmitter();
 
@@ -208,7 +208,7 @@ export async function initNode() {
     const genesisBlock = new Block("0", [{
         sender: null,
         receiver: publicKey,
-        amount: 10,
+        amount: 0,
         signature: null
     }], 0);
 
@@ -248,9 +248,11 @@ export async function addTransactions(txs: Transaction[]) {
             }
         }));
 
-        if (balance < 0) {
+        if (balance - tx.amount < 0) {
             return;
         }
+
+        console.log(`ADDED NEW TRANSACTION (new balance: ${balance - tx.amount})`);
 
         validTxs.push(tx);
     });
