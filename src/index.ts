@@ -10,7 +10,8 @@ import { randomUUID } from "crypto";
 const PORT = 3000;
 const NODE_ID = randomUUID();  // for identification
 const peerList: string[] = [
-    "https://f9175e792e66.ngrok-free.app"
+    "https://f9175e792e66.ngrok-free.app",
+    "http://192.168.1.86:3000"
 ];
 
 const app = express();
@@ -39,12 +40,8 @@ io.on("connection", (socket) => {
 
         const valid = blockChain.validate();
         
-        if (valid !== ErrorType.valid) {
-            if (valid === ErrorType.outOfSync) {
-                syncBlockChain();
-            }
-
-            return;
+        if (!valid) {
+            return syncBlockChain();
         }
 
         clients.forEach(client => {
@@ -71,7 +68,7 @@ async function syncBlockChain() {
                     const tempBlockChain = new BlockChain();
                     tempBlockChain.fromJSON(data);
 
-                    if (tempBlockChain.validate() === ErrorType.valid) {
+                    if (tempBlockChain.validate()) {
                         blockChain.blocks = tempBlockChain.blocks;
                     }
                 }

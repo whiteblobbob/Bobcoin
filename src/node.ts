@@ -136,7 +136,7 @@ export class BlockChain {
 
                 console.log(`invalid block on index ${i} (tampered data)`);
 
-                return ErrorType.tamperedData;
+                return false;
             }
 
             // checks if the chain is still intact
@@ -145,7 +145,7 @@ export class BlockChain {
 
                 console.log(`invalid block on index ${i} (broken chain)`);
 
-                return ErrorType.outOfSync;
+                return false;
             }
 
             // also check if the chain is still intact
@@ -153,14 +153,14 @@ export class BlockChain {
                 this.blocks.pop();
                 console.log(`invalid block on index ${i} (broken chain)`);
 
-                return ErrorType.outOfSync;
+                return false;
             }
 
             // check for diff
             if (!this.blocks[i]!.hash.startsWith('0'.repeat(DIFFICULTY))) {
                 this.blocks.pop();
                 console.log(`invalid block on index ${i} (invalid proof of work)`);
-                return ErrorType.invalidPoW;
+                return false;
             }
 
             // check transactions
@@ -170,19 +170,19 @@ export class BlockChain {
                     if (j !== 0) {
                         this.blocks.pop();
                         console.log(`invalid block on index ${i} (invalid reward)`);
-                        return ErrorType.invalidPoW;
+                        return false;
                     }
 
                     if (transactions[j]!.amount !== REWARD) {
                         this.blocks.pop();
                         console.log(`invalid block on index ${i} (invalid reward amount)`);
-                        return ErrorType.invalidPoW;
+                        return false;
                     }
                 }
             }
         }
 
-        return ErrorType.valid;
+        return true;
     }
 }
 
@@ -297,7 +297,7 @@ export async function addTransactions(txs: Transaction[]) {
 
         const valid = blockChain.validate();
 
-        if (valid === ErrorType.outOfSync) {
+        if (!valid) {
             nodeEvents.emit("sync");
         }
 
