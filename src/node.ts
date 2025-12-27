@@ -1,7 +1,6 @@
 import { createHash, createVerify } from "crypto";
 import EventEmitter from "events";
 import { Worker } from "worker_threads";
-import { ErrorType } from "./types";
 import { readFileSync } from "fs";
 
 export const DIFFICULTY = 5;

@@ -4,15 +4,12 @@ import { Server } from "socket.io";
 import { io as ioClient, Socket } from "socket.io-client";
 import { blockChain, BlockChain, BlockJSON, initNode, nodeEvents } from "./node";
 import router from "./endpoints";
-import { ErrorType, MessageType } from "./types";
+import { MessageType } from "./types";
 import { randomUUID } from "crypto";
+import peers from "../peers.json";
 
 const PORT = 3000;
 const NODE_ID = randomUUID();  // for identification
-const peerList: string[] = [
-    "https://f9175e792e66.ngrok-free.app",
-    "http://192.168.1.86:3000"
-];
 
 const app = express();
 const server = createServer(app);
@@ -82,7 +79,7 @@ async function syncBlockChain() {
 }
 
 async function init() {
-    peerList.forEach(url => {
+    peers.forEach(url => {
         const client = ioClient(url, {
             query: {
                 id: NODE_ID
